@@ -23,7 +23,7 @@ tasks = {}                # channel_id -> scheduler task
 typing_task = None
 status_task = None
 name_task = None
-spam_task = None
+spam_task = []
 afk_task = None
 wordlists = {}            # name -> list of lines
 autopaste_msgs = {}       # channel_id -> list of (delay, message)
@@ -332,15 +332,21 @@ async def on_message(message):
                     await asyncio.sleep(6)
                 except:
                     await asyncio.sleep(10)
-        if spam_task: spam_task.cancel()
-        spam_task = asyncio.create_task(sp())
-        await message.channel.send("Spamming started")
+        task = asyncio.create_task(sp())
+        spam_tasks.append(task)
+        await message.channel.send(" Spamming started")
 
     elif cmd == ".stopspam":
-        if spam_task:
-            spam_task.cancel()
-            spam_task = None
-            await message.channel.send("Spamming stopped")
+        if not spam_tasks:
+            await message.channel.send("No active spam tasks.")
+            return
+        count = 0
+        for task in spam_tasks:
+            if not task.done():
+                task.cancel()
+                count += 1
+        spam_tasks.clear()
+        await message.channel.send(f" Stopped {count} spam task(s).")
 
     elif cmd == ".check" and len(args) >= 2 and message.mentions:
         user = message.mentions[0]
