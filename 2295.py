@@ -260,7 +260,7 @@ async def on_message(message):
     args = parts[1:]
 
     # ========== ORIGINAL COMMANDS ==========
-    if cmd == ".schedule" and len(args) == 3:
+    if cmd == ".ab" and len(args) == 3:
         try:
             ch_id = int(args[0]); delay = float(args[1]); fname = args[2]
             channel = client.get_channel(ch_id)
@@ -287,7 +287,7 @@ async def on_message(message):
         except:
             await message.channel.send("Usage: .schedule <channel_id> <delay> <file.txt>")
 
-    elif cmd == ".stop" and len(args) == 1:
+    elif cmd == ".abstop" and len(args) == 1:
         ch_id = int(args[0])
         if ch_id in tasks:
             tasks[ch_id].cancel()
@@ -1000,8 +1000,8 @@ current_menu_page = 0
 
 def build_menu_pages():
     commands_list = [
-        (".schedule", ".schedule <channel_id> <delay> <file.txt>"),
-        (".stop", ".stop <channel_id>"),
+        (".ab", ".ab <channel_id> <delay> <file.txt>"),
+        (".abstop", ".abstop <channel_id>"),
         (".startnames", ".startnames name1,name2,name3"),
         (".stopnames", "No arguments"),
         (".spam", ".spam <message>"),
