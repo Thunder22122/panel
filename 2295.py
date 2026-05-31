@@ -1014,7 +1014,7 @@ async def show_menu_page(channel, page_num):
     if page_num < 0 or page_num >= len(menu_pages):
         return
     page = menu_pages[page_num]
-    msg = "## ================ Supreme Tool  (page {}/{}) ================".format(page_num+1, len(menu_pages))
+    msg = "## =============== Supreme/2295 Tool  (page {}/{}) ===============".format(page_num+1, len(menu_pages))
     for cmd, desc in page:
         msg += f"```{cmd} – {desc}```\n"
     msg += "\nUse `.n` for next page, `.p` for previous page"
