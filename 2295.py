@@ -46,6 +46,7 @@ react_tasks = {}   # alias -> asyncio.Task for auto-reactions
 mimic_tasks = {}   # alias -> asyncio.Task for message mimic
 mimic_enabled = False   # global flag for mimic mode
 reaction_emojis = []   # list of emojis to react with
+ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 
 # ========== LOAD / SAVE HELPERS ==========
 def load_lines(file_path):
@@ -581,30 +582,72 @@ async def on_message(message):
             
     elif cmd == ".ar" and len(args) >= 3 and message.mentions:
         user = message.mentions[0]
-        channel_id = int(args[1])
+        try:
+            channel_id = int(args[1])
+        except ValueError:
+            await message.channel.send(" Channel ID must be a number.")
+            return
         reply_msg = " ".join(args[2:])
-        async def ar_loop():
-            while True:
-                try:
-                    ch = client.get_channel(channel_id)
-                    if ch:
-                        async for msg in ch.history(limit=10):
-                            if msg.author == user:
-                                await msg.reply(reply_msg)
-                                break
-                    await asyncio.sleep(2)
-                except:
-                    await asyncio.sleep(5)
-        if user.id in auto_reply_tasks:
+        if not reply_msg:
+            await message.channel.send(" You must provide a reply message.")
+            return
+    
+        # Cancel existing task for this user if any
+        if user.id in auto_reply_tasks and not auto_reply_tasks[user.id].done():
             auto_reply_tasks[user.id].cancel()
-        auto_reply_tasks[user.id] = asyncio.create_task(ar_loop())
-        await message.channel.send(f"Auto-reply to {user} in {channel_id}")
+            try:
+                await auto_reply_tasks[user.id]
+            except asyncio.CancelledError:
+                pass
+    
+        # Track which messages we've already replied to
+        if user.id not in ar_replied_ids:
+            ar_replied_ids[user.id] = set()
+    
+        async def ar_loop():
+            try:
+                while True:
+                    try:
+                        ch = client.get_channel(channel_id)
+                        if ch:
+                            # Get the last 10 messages in that channel
+                            async for msg in ch.history(limit=10):
+                                if msg.author == user and msg.id not in ar_replied_ids[user.id]:
+                                    # New message from target user – reply once
+                                    await msg.reply(reply_msg)
+                                    ar_replied_ids[user.id].add(msg.id)
+                                    # Keep set size manageable (optional)
+                                    if len(ar_replied_ids[user.id]) > 100:
+                                        ar_replied_ids[user.id].clear()
+                                    break  # Only reply to the newest one per check
+                        await asyncio.sleep(2)
+                    except asyncio.CancelledError:
+                        break
+                    except:
+                        await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                pass
+            finally:
+                # Clean up when task is stopped
+                if user.id in ar_replied_ids:
+                    ar_replied_ids[user.id].clear()
+    
+        task = asyncio.create_task(ar_loop())
+        auto_reply_tasks[user.id] = task
+        await message.channel.send(f" Auto-reply to {user} in <#{channel_id}>: \"{reply_msg[:50]}\"")
 
     elif cmd == ".sar":
-        for tid in list(auto_reply_tasks.values()):
-            tid.cancel()
+        if not auto_reply_tasks:
+            await message.channel.send(" No auto-reply tasks running.")
+            return
+        count = 0
+        for uid, task in list(auto_reply_tasks.items()):
+            if not task.done():
+                task.cancel()
+                count += 1
         auto_reply_tasks.clear()
-        await message.channel.send("All auto-replies stopped")
+        ar_replied_ids.clear()
+        await message.channel.send(f" Stopped {count} auto-reply task(s).")
 
     elif cmd == ".ar2" and len(args) >= 3 and message.mentions:
         user = message.mentions[0]
