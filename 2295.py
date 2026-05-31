@@ -10,7 +10,10 @@ from collections import deque
 from groq import Groq
 
 # ========== CONFIGURATION ==========
-TOKEN = "token_here"          # Your main Discord user token
+TOKEN = os.getenv("TOKEN") # Your main Discord user token
+if not TOKEN:
+    print("❌ TOKEN environment variable not set.")
+    exit(1)
 GROQ_API_KEY = "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"  # Replace with your Groq key
 
 # ========== GLOBAL VARIABLES ==========
