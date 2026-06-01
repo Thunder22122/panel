@@ -23,7 +23,7 @@ tasks = {}                # channel_id -> scheduler task
 typing_task = None
 status_task = None
 name_task = None
-spam_task = []
+spam_tasks = []
 afk_task = None
 wordlists = {}            # name -> list of lines
 autopaste_msgs = {}       # channel_id -> list of (delay, message)
@@ -50,6 +50,13 @@ ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 
 # ========== LOAD / SAVE HELPERS ==========
 async def load_lines_async(file_path):
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return [l.strip() for l in f if l.strip()]
+    except:
+        return []
+
+def load_lines(file_path):
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return [l.strip() for l in f if l.strip()]
@@ -199,7 +206,7 @@ async def on_ready():
 @client.event
 async def on_message(message):
     global anti_target_channel, anti_user_history, anti_user_last_number, tasks
-    global status_task, name_task, spam_task, afk_task, autopaste_msgs, stam_msgs
+    global status_task, name_task, spam_tasks, afk_task, autopaste_msgs, stam_msgs
     global count_tasks, react_task, stream_task, auto_reply_tasks, gc_task, token_pool
     global BEEF_WORDS, main_user_id, tool_channel_id, current_menu_page, reaction_emojis
 
