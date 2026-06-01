@@ -283,16 +283,21 @@ async def on_message(message):
                         except:
                             await asyncio.sleep(5)
             tasks[ch_id] = asyncio.create_task(sched())
-            await message.channel.send(f"Scheduler started in {ch_id} every {delay}s using {fname}")
+            await message.channel.send(f"ab started in {ch_id} every {delay}s using {fname}")
         except:
-            await message.channel.send("Usage: .schedule <channel_id> <delay> <file.txt>")
-
-    elif cmd == ".abstop" and len(args) == 1:
-        ch_id = int(args[0])
-        if ch_id in tasks:
-            tasks[ch_id].cancel()
-            del tasks[ch_id]
-            await message.channel.send(f"Stopped scheduler in {ch_id}")
+            await message.channel.send("Usage: .ab <channel_id> <delay> <file.txt>")
+    
+    elif cmd == ".abstop":
+        if not tasks:
+            await message.channel.send("No active ab running")
+            return
+        count = 0
+        for ch_id, task in list(tasks.items()):
+            if not task.done():
+                task.cancel()
+                count += 1
+        tasks.clear()
+        await message.channel.send(f" Stopped {count} ab(s).")
 
     elif cmd == ".startnames" and len(args) >= 1:
         names = [n.strip() for n in message.content[12:].split(",") if n.strip()]
@@ -1043,7 +1048,7 @@ def build_menu_pages():
         (".aball", "No arguments (requires hosted tokens)"),
         (".aballstop", "No arguments (stub)"),
         (".streamall", "No arguments"),
-        (".reactall", "Not fully implemented"),
+        (".reactall", ".reactall <emoji>"),
         (".mimic on/off", "No arguments"),
         (".listtokens", "No arguments"),
         (".host", ".host <token>"),
