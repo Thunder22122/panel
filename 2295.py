@@ -775,22 +775,41 @@ async def on_message(message):
         await message.channel.send(f"Deleted {deleted} messages")
 
     elif cmd == ".aball":
-        # Parse optional channel ID
+        # Parse arguments: [channel_id] [wordlist]
         target_channel_id = None
-        if len(args) >= 1 and args[0].isdigit():
-            target_channel_id = int(args[0])
-        else:
+        wordlist_name = None
+        if len(args) >= 1:
+            if args[0].isdigit():
+                target_channel_id = int(args[0])
+                if len(args) >= 2:
+                    wordlist_name = args[1]
+            else:
+                wordlist_name = args[0]
+        if target_channel_id is None:
             target_channel_id = message.channel.id
     
         if not token_pool:
             await message.channel.send("No tokens loaded. Use `.host <token>` first.")
             return
     
-        # Load beef word list
-        if not BEEF_WORDS:
-            BEEF_WORDS = load_lines("beef.txt")
+        # Load beef word list from specified wordlist or default
+        if wordlist_name:
+            if wordlist_name in wordlists:
+                BEEF_WORDS = wordlists[wordlist_name]
+            else:
+                # Try to load from file (wordlist_<name>.txt) if not in memory
+                lines = load_lines(f"wordlist_{wordlist_name}.txt")
+                if lines:
+                    wordlists[wordlist_name] = lines
+                    BEEF_WORDS = lines
+                else:
+                    await message.channel.send(f" Wordlist `{wordlist_name}` not found. Use `.wordlist {wordlist_name}` first.")
+                    return
+        else:
             if not BEEF_WORDS:
-                BEEF_WORDS = ["You got rekt", "L + ratio", "Get owned"]
+                BEEF_WORDS = load_lines("beef.txt")
+                if not BEEF_WORDS:
+                    BEEF_WORDS = ["You got rekt", "L + ratio", "Get owned"]
     
         # Cancel any existing beef tasks
         for alias, task in list(aball_tasks.items()):
@@ -802,10 +821,9 @@ async def on_message(message):
             token = token_info["token"]
             headers = {"Authorization": token, "Content-Type": "application/json"}
             url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
-    
             try:
-                # Verify token and get username
                 async with aiohttp.ClientSession() as session:
+                    # Verify token
                     async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
                         if resp.status != 200:
                             print(f"[Beef] {alias} token invalid: HTTP {resp.status}")
@@ -813,18 +831,17 @@ async def on_message(message):
                         user_data = await resp.json()
                         print(f"[Beef] {alias} authenticated as {user_data['username']}")
     
-                    # Send a test message to confirm
+                    # Test message
                     test_payload = {"content": " Beef worker online (HTTP mode)"}
                     async with session.post(url, json=test_payload, headers=headers) as resp:
                         if resp.status not in (200, 204):
-                            print(f"[Beef] {alias} test message failed: {resp.status}")
-                            # Don't return – maybe channel missing permissions, but continue anyway
+                            print(f"[Beef] {alias} test failed: {resp.status}")
                         else:
-                            print(f"[Beef] {alias} test message sent")
+                            print(f"[Beef] {alias} test sent")
     
-                    # Main beef loop
+                    # Main loop
                     while True:
-                        await asyncio.sleep(0)  # cancellation point
+                        await asyncio.sleep(0)
                         word = random.choice(BEEF_WORDS)
                         payload = {"content": word}
                         async with session.post(url, json=payload, headers=headers) as resp:
@@ -844,9 +861,10 @@ async def on_message(message):
             alias = token_info.get("alias", "unknown")
             task = asyncio.create_task(beef_worker(token_info, target_channel_id, alias))
             aball_tasks[alias] = task
-            await asyncio.sleep(1)  # slight delay between starting workers
+            await asyncio.sleep(1)
     
-        await message.channel.send(f" Auto‑beef started with {len(token_pool)} token(s) in <#{target_channel_id}>")
+        wl_msg = f" using wordlist `{wordlist_name}`" if wordlist_name else " using default beef list"
+        await message.channel.send(f" Auto-beef started with {len(token_pool)} token(s) in <#{target_channel_id}>{wl_msg}")
         
     elif cmd == ".aballstop":
         if not aball_tasks:
