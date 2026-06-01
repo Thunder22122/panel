@@ -208,30 +208,39 @@ async def on_ready():
     print("Type .menu to see all commands")
 
 @client.event
-async def on_message_delete(message):
+async def on_raw_message_delete(payload):
     if not snipe_log_channel:
         return
-    if message.channel.id not in snipe_channels:
-        return
-    if message.author == client.user:
+    if payload.channel_id not in snipe_channels:
         return
 
     log_ch = client.get_channel(snipe_log_channel)
     if not log_ch:
         return
 
-    content = message.content or "[No text content]"
-    author = message.author
-    channel = message.channel
-    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
-
-    embed = discord.Embed(
-        title="Message Deleted",
-        description=f"**Author:** {author.mention}\n**Channel:** {channel.mention}\n**Time:** {timestamp}",
-        color=0xff4444
-    )
-    embed.add_field(name="Content", value=content[:1024], inline=False)
-    await log_ch.send(embed=embed)
+    # If the message was cached, we can show its content
+    if payload.cached_message:
+        msg = payload.cached_message
+        if msg.author == client.user:
+            return
+        content = msg.content or "[No text content]"
+        author = msg.author
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        embed = discord.Embed(
+            title=" Message Deleted",
+            description=f"**Author:** {author.mention}\n**Channel:** <#{payload.channel_id}>\n**Time:** {timestamp}",
+            color=0xff4444
+        )
+        embed.add_field(name="Content", value=content[:1024], inline=False)
+        await log_ch.send(embed=embed)
+    else:
+        # Message not cached – can only log that a deletion happened
+        embed = discord.Embed(
+            title=" Message Deleted",
+            description=f"**Channel:** <#{payload.channel_id}>\n**Message ID:** {payload.message_id}\n*Content not available (message not cached)*",
+            color=0xffaa44
+        )
+        await log_ch.send(embed=embed)
 
 @client.event
 async def on_message(message):
@@ -479,12 +488,11 @@ async def on_message(message):
             await message.channel.send(f"Wordlist '{name}' not found")
 
     elif cmd == ".wordlists":
-        wl_names = [f for f in os.listdir() if f.endswith(".txt")]
-        wl_names = [f[9:-4] for f in wl_names]
-        if wl_names:
-            await message.channel.send("Wordlists: " + ", ".join(wl_names))
+        txt_files = [f for f in os.listdir() if f.endswith('.txt') and os.path.isfile(f)]
+        if txt_files:
+            await message.channel.send(" .txt files in directory:\n" + "\n".join(txt_files))
         else:
-            await message.channel.send("No wordlists found")
+            await message.channel.send("No .txt files found.")
 
     elif cmd == ".importwl" and len(args) == 1:
         name = args[0]
