@@ -772,18 +772,51 @@ async def on_message(message):
             try:
                 await temp_client.start(token_info["token"])
                 print(f"[Beef] {alias} logged in as {temp_client.user}")
-    
-                # Get the channel from the alt's client
+        
+                # Wait for client to be fully ready
+                await temp_client.wait_until_ready()
+        
+                # Give a little extra time for cache to populate
+                await asyncio.sleep(1)
+        
+                channel = None
                 if guild_id:
-                    guild = temp_client.get_guild(guild_id)
-                    channel = guild.get_channel(channel_id) if guild else None
+                    # Retry a few times to get the guild
+                    for attempt in range(5):
+                        guild = temp_client.get_guild(guild_id)
+                        if guild:
+                            channel = guild.get_channel(channel_id)
+                            if channel:
+                                break
+                        print(f"[Beef] {alias} attempt {attempt+1}: guild/channel not ready, retrying...")
+                        await asyncio.sleep(1)
                 else:
-                    channel = temp_client.get_channel(channel_id)  # DM or group
-    
+                    # DM channel: try to fetch/create
+                    for attempt in range(3):
+                        channel = temp_client.get_channel(channel_id)
+                        if channel:
+                            break
+                        # Try to create DM if not found
+                        try:
+                            user = await temp_client.fetch_user(main_user_id)
+                            channel = await user.create_dm()
+                            print(f"[Beef] {alias} created DM channel")
+                            break
+                        except Exception as e:
+                            print(f"[Beef] {alias} DM create error: {e}")
+                            await asyncio.sleep(1)
+        
                 if not channel:
-                    print(f"[Beef] {alias} cannot see channel {channel_id}")
+                    error_msg = f" **{alias}** cannot access channel <#{channel_id}>. Make sure it's in the server and has permissions."
+                    await message.channel.send(error_msg)  # send error to Discord
+                    print(f"[Beef] {alias} channel not found after retries")
                     return
-    
+        
+                # Send a test message to confirm
+                await channel.send(" Beef worker online")
+                await asyncio.sleep(1)
+        
+                # Main beef loop
                 while True:
                     await asyncio.sleep(0)  # cancellation point
                     word = random.choice(BEEF_WORDS)
@@ -792,10 +825,12 @@ async def on_message(message):
                     except Exception as e:
                         print(f"[Beef] {alias} send error: {e}")
                     await asyncio.sleep(2)
-    
+        
             except asyncio.CancelledError:
                 print(f"[Beef] {alias} task cancelled")
             except Exception as e:
+                error_msg = f" **{alias}** login failed: {e}"
+                await message.channel.send(error_msg)  # send to Discord
                 print(f"[Beef] {alias} error: {e}")
             finally:
                 await temp_client.close()
