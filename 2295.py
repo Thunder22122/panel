@@ -272,6 +272,7 @@ async def on_message(message):
             async def sched():
                 while True:
                     lines = await asyncio.to_thread(load_lines, fname)
+                    await asyncio.sleep(0)
                     if not lines:
                         await asyncio.sleep(5)
                         continue
