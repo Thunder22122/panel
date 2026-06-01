@@ -12,7 +12,7 @@ from groq import Groq
 # ========== CONFIGURATION ==========
 TOKEN = os.getenv("TOKEN") # Your main Discord user token
 if not TOKEN:
-    print("❌ TOKEN environment variable not set.")
+    print(" TOKEN environment variable not set.")
     exit(1)
 GROQ_API_KEY = "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"  # Replace with your Groq key
 
@@ -49,7 +49,7 @@ reaction_emojis = []   # list of emojis to react with
 ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 
 # ========== LOAD / SAVE HELPERS ==========
-def load_lines(file_path):
+async def load_lines_async(file_path):
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return [l.strip() for l in f if l.strip()]
@@ -271,7 +271,7 @@ async def on_message(message):
                 tasks[ch_id].cancel()
             async def sched():
                 while True:
-                    lines = load_lines(fname)
+                    lines = await asyncio.to_thread(load_lines, fname)
                     if not lines:
                         await asyncio.sleep(5)
                         continue
