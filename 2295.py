@@ -742,51 +742,71 @@ async def on_message(message):
         await message.channel.send(f"Deleted {deleted} messages")
 
     elif cmd == ".aball":
+        # Parse optional channel ID
+        target_channel_id = None
+        if len(args) >= 1 and args[0].isdigit():
+            target_channel_id = int(args[0])
+        else:
+            target_channel_id = message.channel.id
+    
         if not token_pool:
             await message.channel.send("No tokens loaded. Use .host <token> first.")
             return
-        
+    
         # Load beef word list
         if not BEEF_WORDS:
             BEEF_WORDS = load_lines("beef.txt")
             if not BEEF_WORDS:
                 BEEF_WORDS = ["You got rekt", "L + ratio", "Get owned"]
-        
+    
         # Cancel any existing beef tasks before starting new ones
         for alias, task in list(aball_tasks.items()):
             if not task.done():
                 task.cancel()
         aball_tasks.clear()
-        
-        # Start a beef worker for each hosted token
-        async def beef_worker(token_info, channel, alias):
+    
+        target_guild_id = message.guild.id if message.guild else None
+    
+        async def beef_worker(token_info, channel_id, guild_id, alias):
             temp_client = discord.Client(self_bot=True)
             try:
                 await temp_client.start(token_info["token"])
                 print(f"[Beef] {alias} logged in as {temp_client.user}")
+    
+                # Get the channel from the alt's client
+                if guild_id:
+                    guild = temp_client.get_guild(guild_id)
+                    channel = guild.get_channel(channel_id) if guild else None
+                else:
+                    channel = temp_client.get_channel(channel_id)  # DM or group
+    
+                if not channel:
+                    print(f"[Beef] {alias} cannot see channel {channel_id}")
+                    return
+    
                 while True:
+                    await asyncio.sleep(0)  # cancellation point
                     word = random.choice(BEEF_WORDS)
                     try:
                         await channel.send(word)
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"[Beef] {alias} send error: {e}")
                     await asyncio.sleep(2)
+    
             except asyncio.CancelledError:
                 print(f"[Beef] {alias} task cancelled")
-                await temp_client.close()
-                raise
             except Exception as e:
                 print(f"[Beef] {alias} error: {e}")
             finally:
                 await temp_client.close()
-        
-        target_channel = message.channel
+    
         for token_info in token_pool:
             alias = token_info.get("alias", "unknown")
-            task = asyncio.create_task(beef_worker(token_info, target_channel, alias))
+            task = asyncio.create_task(beef_worker(token_info, target_channel_id, target_guild_id, alias))
             aball_tasks[alias] = task
-        
-        await message.channel.send(f" Auto-beef started with {len(token_pool)} tokens in this channel.")
+            await asyncio.sleep(1)  # delay between logins
+    
+        await message.channel.send(f" Auto-beef started with {len(token_pool)} token(s) in <#{target_channel_id}>.")
     
     elif cmd == ".aballstop":
         if not aball_tasks:
