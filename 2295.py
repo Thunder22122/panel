@@ -278,7 +278,7 @@ async def on_message(message):
                             await message.channel.send(f" File is empty.")
                             return
                         # Save as wordlist_<name>.txt
-                        filename = f"wordlist_{name}.txt"
+                        filename = f"{name}.txt"
                         with open(filename, "w", encoding="utf-8") as f:
                             f.write("\n".join(lines))
                         wordlists[name] = lines
@@ -450,7 +450,7 @@ async def on_message(message):
             await message.channel.send(f"Wordlist '{name}' not found")
 
     elif cmd == ".wordlists":
-        wl_names = [f for f in os.listdir() if f.startswith("wordlist_") and f.endswith(".txt")]
+        wl_names = [f for f in os.listdir() if f.endswith(".txt")]
         wl_names = [f[9:-4] for f in wl_names]
         if wl_names:
             await message.channel.send("Wordlists: " + ", ".join(wl_names))
@@ -832,8 +832,6 @@ async def on_message(message):
                         user_data = await resp.json()
                         print(f"[Beef] {alias} authenticated as {user_data['username']}")
     
-                    # Test message
-                    test_payload = {"content": " Beef worker online (HTTP mode)"}
                     async with session.post(url, json=test_payload, headers=headers) as resp:
                         if resp.status not in (200, 204):
                             print(f"[Beef] {alias} test failed: {resp.status}")
