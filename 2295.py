@@ -7,6 +7,7 @@ import aiohttp
 import time
 import json
 from collections import deque
+from datetime import datetime
 from groq import Groq
 
 # ========== CONFIGURATION ==========
@@ -48,8 +49,7 @@ mimic_enabled = False   # global flag for mimic mode
 reaction_emojis = []   # list of emojis to react with
 ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 pending_import = {}   # user_id -> wordlist name
-snipe_channels = set()        # channels where we monitor deletions
-snipe_log_channel = None      # where to send snipe logs (channel ID)
+snipe_enabled = set()
 
 # ========== LOAD / SAVE HELPERS ==========
 async def load_lines_async(file_path):
@@ -208,46 +208,39 @@ async def on_ready():
     print("Type .menu to see all commands")
 
 @client.event
-async def on_raw_message_delete(payload):
-    if not snipe_log_channel:
-        return
-    if payload.channel_id not in snipe_channels:
-        return
-
-    log_ch = client.get_channel(snipe_log_channel)
-    if not log_ch:
+async def on_message_delete(message):
+    # only work if enabled in this channel
+    if message.channel.id not in snipe_enabled:
         return
 
-    # If the message was cached, we can show its content
-    if payload.cached_message:
-        msg = payload.cached_message
-        if msg.author == client.user:
-            return
-        content = msg.content or "[No text content]"
-        author = msg.author
-        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        embed = discord.Embed(
-            title=" Message Deleted",
-            description=f"**Author:** {author.mention}\n**Channel:** <#{payload.channel_id}>\n**Time:** {timestamp}",
-            color=0xff4444
+    data = deleted_cache.get(message.id)
+
+    if not data:
+        return
+
+    try:
+        await message.channel.send(
+            f" **this guy deleted Message**\n"
+            f" sender: {data['author']}\n"
+            f" Sent at: {data['time']}\n"
+            f" msesage: {data['content']}"
         )
-        embed.add_field(name="Content", value=content[:1024], inline=False)
-        await log_ch.send(embed=embed)
-    else:
-        # Message not cached – can only log that a deletion happened
-        embed = discord.Embed(
-            title=" Message Deleted",
-            description=f"**Channel:** <#{payload.channel_id}>\n**Message ID:** {payload.message_id}\n*Content not available (message not cached)*",
-            color=0xffaa44
-        )
-        await log_ch.send(embed=embed)
-
+    except:
+        pass
+      
 @client.event
 async def on_message(message):
     global anti_target_channel, anti_user_history, anti_user_last_number, tasks
     global status_task, name_task, spam_tasks, afk_task, autopaste_msgs, stam_msgs
     global count_tasks, react_task, stream_task, auto_reply_tasks, gc_task, token_pool
     global BEEF_WORDS, main_user_id, tool_channel_id, current_menu_page, reaction_emojis
+
+        # store message info
+    deleted_cache[message.id] = {
+        "content": message.content,
+        "author": f"{message.author} ({message.author.id})",
+        "time": message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    }
 
     authorized_ids = {client.user.id}   # always allow the main account
     for token_info in token_pool:
@@ -1140,30 +1133,19 @@ async def on_message(message):
                 else:
                     await message.channel.send(f" Token is **INVALID** (HTTP {resp.status})")
 
-    elif cmd == ".snipeset" and len(args) == 2:
-        try:
-            monitor = int(args[0])
-            log = int(args[1])
-            snipe_channels.add(monitor)
-            snipe_log_channel = log
-            await message.channel.send(f" Monitoring deletions in <#{monitor}>, logging to <#{log}>")
-        except:
-            await message.channel.send("Usage: .snipeset <monitored_channel_id> <log_channel_id>")
-    
-    elif cmd == ".snipestop" and len(args) == 1:
-        try:
-            monitor = int(args[0])
-            snipe_channels.discard(monitor)
-            await message.channel.send(f" Stopped monitoring deletions in <#{monitor}>")
-        except:
-            await message.channel.send("Usage: .snipestop <channel_id>")
-    
-    elif cmd == ".snipelist":
-        if snipe_channels:
-            chs = ", ".join(f"<#{ch}>" for ch in snipe_channels)
-            await message.channel.send(f" Monitoring deletions in: {chs}")
-        else:
-            await message.channel.send("No active message snipers.")
+    elif cmd == ".snipeset":
+        snipe_enabled.add(message.channel.id)
+        await message.channel.send("Snipe enabled in this chat")
+        
+    elif cmd == ".snipestop":
+        if message.channel.id in snipe_enabled:
+            snipe_enabled.remove(message.channel.id)
+            await message.channel.send("Snipe disabled here")
+
+    elif cmd == ".date":
+        now = datetime.now()
+        date_str = now.strftime("%A, %B %d, %Y")
+        await message.channel.send(f" **Today is** {date_str}")
 
     elif cmd == ".uptime":
         uptime_seconds = int(time.time() - start_time)
@@ -1230,9 +1212,9 @@ def build_menu_pages():
         (".pack", ".pack <channel_id> <times> <lines> <pack_type>"),
         (".nuke", ".nuke <server_id>"),
         (".uptime", "No arguments"),
-        (".snipeset", ".snipeset <monitored_channel> <log_channel>"),
-        (".snipestop", ".snipestop <monitored_channel>"),
-        (".snipelist", "No arguments"),
+        (".date", "No arguments"),
+        (".snipeset", "No arguments"),
+        (".snipestop", "No arguments>"),
         (".ping", "No arguments"),
         (".menu", "No arguments"),
     ]
