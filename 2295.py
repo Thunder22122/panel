@@ -277,20 +277,28 @@ async def on_message(message):
             if ch_id in tasks:
                 tasks[ch_id].cancel()
             async def sched():
-                while True:
-                    lines = await asyncio.to_thread(load_lines, fname)
-                    await asyncio.sleep(0)
-                    if not lines:
-                        await asyncio.sleep(5)
-                        continue
-                    random.shuffle(lines)
-                    for line in lines:
-                        try:
-                            await channel.send(line)
-                            await asyncio.sleep(delay)
-                        except:
+                try:
+                    while True:
+                        lines = await asyncio.to_thread(load_lines, fname)
+                        await asyncio.sleep(0)   # cancellation point
+                        if not lines:
                             await asyncio.sleep(5)
-            tasks[ch_id] = asyncio.create_task(sched())
+                            continue
+                        random.shuffle(lines)
+                        for line in lines:
+                            # Check for cancellation before each send
+                            if asyncio.current_task().cancelled():
+                                return
+                            try:
+                                await channel.send(line)
+                                await asyncio.sleep(delay)
+                            except asyncio.CancelledError:
+                                raise
+                            except:
+                                await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    # task was cancelled – exit cleanly
+                    return
             await message.channel.send(f"ab started in {ch_id} every {delay}s using {fname}")
         except:
             await message.channel.send("Usage: .ab <channel_id> <delay> <file.txt>")
