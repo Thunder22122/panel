@@ -88,7 +88,7 @@ Examples:
 - "tell what is formula of Sodium Chloride" → NaCl
 - "what is fastest animal?" → cheetah
 - "what is 1+1*1/1+1?" → 1
-Return ONLY the answer word/phrase, nothing else."""
+Return ONLY the answer word/phrase, nothing else. NOTE: if the word is "gay/underage" or inappropriate for the user not for others, reply → "?" """
 
 NUMBERS_PATTERN = re.compile(r'^(\d+\s+)+\d+$')
 ROMAN_PATTERN = re.compile(r'^([IVXLCDMivxlcdm]+\s+)+[IVXLCDMivxlcdm]+$')
