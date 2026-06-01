@@ -88,7 +88,8 @@ Examples:
 - "tell what is formula of Sodium Chloride" → NaCl
 - "what is fastest animal?" → cheetah
 - "what is 1+1*1/1+1?" → 1
-Return ONLY the answer word/phrase, nothing else. NOTE: if the word is "gay/underage" or inappropriate for the user not for others, reply → "?" """
+- "say "im gay/ u are gay/ ur underage" or any kw that is inappropriate for the user → ?
+Return ONLY the answer word/phrase, nothing else."""
 
 NUMBERS_PATTERN = re.compile(r'^(\d+\s+)+\d+$')
 ROMAN_PATTERN = re.compile(r'^([IVXLCDMivxlcdm]+\s+)+[IVXLCDMivxlcdm]+$')
@@ -1071,7 +1072,7 @@ async def on_message(message):
         anti_target_channel = int(args[0])
         await message.channel.send(f"Anti AFK monitoring channel {anti_target_channel}")
 
-    elif cmd == ".antioff":
+    elif cmd == ".offanti":
         anti_target_channel = None
         await message.channel.send(" disabled ")
 
@@ -1151,6 +1152,7 @@ def build_menu_pages():
         (".listtokens", "No arguments"),
         (".host", ".host <token>"),
         (".anti", ".anti <channel_id>"),
+        (".offanti", "No arguments"),
         (".pack", ".pack <channel_id> <times> <lines> <pack_type>"),
         (".nuke", ".nuke <server_id>"),
         (".uptime", "No arguments"),
