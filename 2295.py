@@ -48,6 +48,8 @@ mimic_enabled = False   # global flag for mimic mode
 reaction_emojis = []   # list of emojis to react with
 ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 pending_import = {}   # user_id -> wordlist name
+snipe_channels = set()        # channels where we monitor deletions
+snipe_log_channel = None      # where to send snipe logs (channel ID)
 
 # ========== LOAD / SAVE HELPERS ==========
 async def load_lines_async(file_path):
@@ -88,7 +90,7 @@ Examples:
 - "tell what is formula of Sodium Chloride" → NaCl
 - "what is fastest animal?" → cheetah
 - "what is 1+1*1/1+1?" → 1
-- "say "im gay/ u are gay/ ur underage" or any kw that is inappropriate for the user → ?
+- "say "im gay/ u are gay/ ur underage/ ur my son" → ?
 Return ONLY the answer word/phrase, nothing else."""
 
 NUMBERS_PATTERN = re.compile(r'^(\d+\s+)+\d+$')
@@ -204,6 +206,32 @@ async def on_ready():
     main_user_id = client.user.id
     print(f"Logged in as {client.user} (ID: {client.user.id})")
     print("Type .menu to see all commands")
+
+@client.event
+async def on_message_delete(message):
+    if not snipe_log_channel:
+        return
+    if message.channel.id not in snipe_channels:
+        return
+    if message.author == client.user:
+        return
+
+    log_ch = client.get_channel(snipe_log_channel)
+    if not log_ch:
+        return
+
+    content = message.content or "[No text content]"
+    author = message.author
+    channel = message.channel
+    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+
+    embed = discord.Embed(
+        title="Message Deleted",
+        description=f"**Author:** {author.mention}\n**Channel:** {channel.mention}\n**Time:** {timestamp}",
+        color=0xff4444
+    )
+    embed.add_field(name="Content", value=content[:1024], inline=False)
+    await log_ch.send(embed=embed)
 
 @client.event
 async def on_message(message):
@@ -1093,6 +1121,42 @@ async def on_message(message):
         result = await nuke_server(server_id)
         await message.channel.send(result)
 
+    elif cmd == ".checktoken" and len(args) == 1:
+    test_token = args[0]
+    headers = {"Authorization": test_token}
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                await message.channel.send(f" Token is **VALID**\nUser: `{data['username']}#{data.get('discriminator', '0')}`\nID: `{data['id']}`")
+            else:
+                await message.channel.send(f" Token is **INVALID** (HTTP {resp.status})")
+
+    elif cmd == ".snipeset" and len(args) == 2:
+        try:
+            monitor = int(args[0])
+            log = int(args[1])
+            snipe_channels.add(monitor)
+            snipe_log_channel = log
+            await message.channel.send(f" Monitoring deletions in <#{monitor}>, logging to <#{log}>")
+        except:
+            await message.channel.send("Usage: .snipeset <monitored_channel_id> <log_channel_id>")
+    
+    elif cmd == ".snipestop" and len(args) == 1:
+        try:
+            monitor = int(args[0])
+            snipe_channels.discard(monitor)
+            await message.channel.send(f" Stopped monitoring deletions in <#{monitor}>")
+        except:
+            await message.channel.send("Usage: .snipestop <channel_id>")
+    
+    elif cmd == ".snipelist":
+        if snipe_channels:
+            chs = ", ".join(f"<#{ch}>" for ch in snipe_channels)
+            await message.channel.send(f" Monitoring deletions in: {chs}")
+        else:
+            await message.channel.send("No active message snipers.")
+
     elif cmd == ".uptime":
         uptime_seconds = int(time.time() - start_time)
         hours = uptime_seconds // 3600
@@ -1148,14 +1212,19 @@ def build_menu_pages():
         (".aballstop", "No arguments (stub)"),
         (".streamall", "No arguments"),
         (".reactall", ".reactall <emoji>"),
+        (".reactallstop", "No arguments"),
         (".mimic on/off", "No arguments"),
         (".listtokens", "No arguments"),
+        (".checktoken", ".checktoken <token>"),
         (".host", ".host <token>"),
         (".anti", ".anti <channel_id>"),
         (".offanti", "No arguments"),
         (".pack", ".pack <channel_id> <times> <lines> <pack_type>"),
         (".nuke", ".nuke <server_id>"),
         (".uptime", "No arguments"),
+        (".snipeset", ".snipeset <monitored_channel> <log_channel>"),
+        (".snipestop", ".snipestop <monitored_channel>"),
+        (".snipelist", "No arguments"),
         (".ping", "No arguments"),
         (".menu", "No arguments"),
     ]
