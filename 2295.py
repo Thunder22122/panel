@@ -297,8 +297,10 @@ async def on_message(message):
                             except:
                                 await asyncio.sleep(5)
                 except asyncio.CancelledError:
-                    # task was cancelled – exit cleanly
                     return
+
+            tasks[ch_id] = asyncio.create_task(sched())
+            
             await message.channel.send(f"ab started in {ch_id} every {delay}s using {fname}")
         except:
             await message.channel.send("Usage: .ab <channel_id> <delay> <file.txt>")
