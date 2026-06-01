@@ -1065,7 +1065,6 @@ async def on_message(message):
 
     elif cmd == ".host" and len(args) == 1:
         new_token = args[0]
-        import aiohttp
         headers = {"Authorization": new_token}
         async with aiohttp.ClientSession() as session:
             try:
