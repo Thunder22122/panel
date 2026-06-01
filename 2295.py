@@ -1071,6 +1071,10 @@ async def on_message(message):
         anti_target_channel = int(args[0])
         await message.channel.send(f"Anti AFK monitoring channel {anti_target_channel}")
 
+    elif cmd == ".antioff":
+        anti_target_channel = None
+        await message.channel.send(" disabled ")
+
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
         channel = client.get_channel(ch_id)
