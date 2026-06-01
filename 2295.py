@@ -224,7 +224,7 @@ async def on_message_delete(message):
             f" **this guy deleted Message**\n"
             f" sender: {data['author']}\n"
             f" Sent at: {data['time']}\n"
-            f" msesage: {data['content']}"
+            f" message: {data['content']}"
         )
     except:
         pass
