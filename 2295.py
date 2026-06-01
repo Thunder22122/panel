@@ -47,6 +47,7 @@ mimic_tasks = {}   # alias -> asyncio.Task for message mimic
 mimic_enabled = False   # global flag for mimic mode
 reaction_emojis = []   # list of emojis to react with
 ar_replied_ids = {}   # user_id -> set of message IDs already replied to
+pending_import = {}   # user_id -> wordlist name
 
 # ========== LOAD / SAVE HELPERS ==========
 async def load_lines_async(file_path):
@@ -258,6 +259,35 @@ async def on_message(message):
     # ----- Command processing only for authorized users -----
     if message.author.id not in authorized_ids:
         return
+
+    # ----- Handle file uploads for pending imports -----
+    if message.attachments and message.author.id in pending_import:
+        name = pending_import.pop(message.author.id)
+        attachment = message.attachments[0]
+        if not attachment.filename.endswith('.txt'):
+            await message.channel.send(f" Only `.txt` files are allowed for wordlists.")
+            return
+        try:
+            # Download the file content
+            async with aiohttp.ClientSession() as session:
+                async with session.get(attachment.url) as resp:
+                    if resp.status == 200:
+                        content = await resp.text()
+                        lines = [l.strip() for l in content.splitlines() if l.strip()]
+                        if not lines:
+                            await message.channel.send(f" File is empty.")
+                            return
+                        # Save as wordlist_<name>.txt
+                        filename = f"wordlist_{name}.txt"
+                        with open(filename, "w", encoding="utf-8") as f:
+                            f.write("\n".join(lines))
+                        wordlists[name] = lines
+                        await message.channel.send(f" Wordlist **{name}** imported with {len(lines)} lines.")
+                    else:
+                        await message.channel.send(f" Failed to download file (HTTP {resp.status}).")
+        except Exception as e:
+            await message.channel.send(f" Error importing wordlist: {e}")
+        return  # Don't process the message as a command
     
     if not message.content.startswith("."):
         return
@@ -279,7 +309,10 @@ async def on_message(message):
             async def sched():
                 try:
                     while True:
-                        lines = await asyncio.to_thread(load_lines, fname)
+                        if fname in wordlists:
+                            lines = wordlists[fname]
+                        else:
+                            lines = await asyncio.to_thread(load_lines, fname)
                         await asyncio.sleep(0)   # cancellation point
                         if not lines:
                             await asyncio.sleep(5)
@@ -425,8 +458,8 @@ async def on_message(message):
 
     elif cmd == ".importwl" and len(args) == 1:
         name = args[0]
-        await message.channel.send("Please upload a .txt file")
-        # This is complex to implement in a selfbot, we'll skip for brevity; you can manually place files.
+        pending_import[message.author.id] = name
+        await message.channel.send(f"📤 Please upload the `.txt` file for wordlist **{name}** now. (Send only the file, no extra text)")
 
     elif cmd == ".autopaste" and len(args) >= 3:
         try:
