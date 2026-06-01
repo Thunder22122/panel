@@ -1122,15 +1122,15 @@ async def on_message(message):
         await message.channel.send(result)
 
     elif cmd == ".checktoken" and len(args) == 1:
-    test_token = args[0]
-    headers = {"Authorization": test_token}
-    async with aiohttp.ClientSession() as session:
-        async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                await message.channel.send(f" Token is **VALID**\nUser: `{data['username']}#{data.get('discriminator', '0')}`\nID: `{data['id']}`")
-            else:
-                await message.channel.send(f" Token is **INVALID** (HTTP {resp.status})")
+        test_token = args[0]
+        headers = {"Authorization": test_token}
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    await message.channel.send(f" Token is **VALID**\nUser: `{data['username']}#{data.get('discriminator', '0')}`\nID: `{data['id']}`")
+                else:
+                    await message.channel.send(f" Token is **INVALID** (HTTP {resp.status})")
 
     elif cmd == ".snipeset" and len(args) == 2:
         try:
