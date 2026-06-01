@@ -783,7 +783,7 @@ async def on_message(message):
             target_channel_id = message.channel.id
     
         if not token_pool:
-            await message.channel.send("No tokens loaded. Use .host <token> first.")
+            await message.channel.send("No tokens loaded. Use `.host <token>` first.")
             return
     
         # Load beef word list
@@ -792,94 +792,62 @@ async def on_message(message):
             if not BEEF_WORDS:
                 BEEF_WORDS = ["You got rekt", "L + ratio", "Get owned"]
     
-        # Cancel any existing beef tasks before starting new ones
+        # Cancel any existing beef tasks
         for alias, task in list(aball_tasks.items()):
             if not task.done():
                 task.cancel()
         aball_tasks.clear()
     
-        target_guild_id = message.guild.id if message.guild else None
+        async def beef_worker(token_info, channel_id, alias):
+            token = token_info["token"]
+            headers = {"Authorization": token, "Content-Type": "application/json"}
+            url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
     
-        async def beef_worker(token_info, channel_id, guild_id, alias):
-            temp_client = discord.Client(self_bot=True)
             try:
-                await temp_client.start(token_info["token"])
-                print(f"[Beef] {alias} logged in as {temp_client.user}")
-        
-                # Wait for client to be fully ready
-                try:
-                    await asyncio.wait_for(temp_client.wait_until_ready(), timeout=10)
-                except asyncio.TimeoutError:
-                    print(f"[Beef] {alias} client never became ready – token likely invalid or already in use elsewhere")
-                    return
-        
-                # Give a little extra time for cache to populate
-                await asyncio.sleep(1)
-        
-                channel = None
-                if guild_id:
-                    # Retry a few times to get the guild
-                    for attempt in range(5):
-                        guild = temp_client.get_guild(guild_id)
-                        if guild:
-                            channel = guild.get_channel(channel_id)
-                            if channel:
-                                break
-                        print(f"[Beef] {alias} attempt {attempt+1}: guild/channel not ready, retrying...")
-                        await asyncio.sleep(1)
-                else:
-                    # DM channel: try to fetch/create
-                    for attempt in range(3):
-                        channel = temp_client.get_channel(channel_id)
-                        if channel:
-                            break
-                        # Try to create DM if not found
-                        try:
-                            user = await temp_client.fetch_user(main_user_id)
-                            channel = await user.create_dm()
-                            print(f"[Beef] {alias} created DM channel")
-                            break
-                        except Exception as e:
-                            print(f"[Beef] {alias} DM create error: {e}")
-                            await asyncio.sleep(1)
-        
-                if not channel:
-                    error_msg = f" **{alias}** cannot access channel <#{channel_id}>. Make sure it's in the server and has permissions."
-                    await message.channel.send(error_msg)  # send error to Discord
-                    print(f"[Beef] {alias} channel not found after retries")
-                    return
-        
-                # Send a test message to confirm
-                await channel.send(" Beef worker online")
-                await asyncio.sleep(1)
-        
-                # Main beef loop
-                while True:
-                    await asyncio.sleep(0)  # cancellation point
-                    word = random.choice(BEEF_WORDS)
-                    try:
-                        await channel.send(word)
-                    except Exception as e:
-                        print(f"[Beef] {alias} send error: {e}")
-                    await asyncio.sleep(2)
-        
+                # Verify token and get username
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
+                        if resp.status != 200:
+                            print(f"[Beef] {alias} token invalid: HTTP {resp.status}")
+                            return
+                        user_data = await resp.json()
+                        print(f"[Beef] {alias} authenticated as {user_data['username']}")
+    
+                    # Send a test message to confirm
+                    test_payload = {"content": " Beef worker online (HTTP mode)"}
+                    async with session.post(url, json=test_payload, headers=headers) as resp:
+                        if resp.status not in (200, 204):
+                            print(f"[Beef] {alias} test message failed: {resp.status}")
+                            # Don't return – maybe channel missing permissions, but continue anyway
+                        else:
+                            print(f"[Beef] {alias} test message sent")
+    
+                    # Main beef loop
+                    while True:
+                        await asyncio.sleep(0)  # cancellation point
+                        word = random.choice(BEEF_WORDS)
+                        payload = {"content": word}
+                        async with session.post(url, json=payload, headers=headers) as resp:
+                            if resp.status not in (200, 204):
+                                print(f"[Beef] {alias} send failed: {resp.status}")
+                            else:
+                                print(f"[Beef] {alias} sent: {word}")
+                        await asyncio.sleep(2)
+    
             except asyncio.CancelledError:
                 print(f"[Beef] {alias} task cancelled")
             except Exception as e:
-                error_msg = f" **{alias}** login failed: {e}"
-                await message.channel.send(error_msg)  # send to Discord
                 print(f"[Beef] {alias} error: {e}")
-            finally:
-                await temp_client.close()
+                await message.channel.send(f" **{alias}** error: {e}")
     
         for token_info in token_pool:
             alias = token_info.get("alias", "unknown")
-            task = asyncio.create_task(beef_worker(token_info, target_channel_id, target_guild_id, alias))
+            task = asyncio.create_task(beef_worker(token_info, target_channel_id, alias))
             aball_tasks[alias] = task
-            await asyncio.sleep(1)  # delay between logins
+            await asyncio.sleep(1)  # slight delay between starting workers
     
-        await message.channel.send(f" Auto-beef started with {len(token_pool)} token(s) in <#{target_channel_id}>.")
-    
+        await message.channel.send(f" Auto‑beef started with {len(token_pool)} token(s) in <#{target_channel_id}>")
+        
     elif cmd == ".aballstop":
         if not aball_tasks:
             await message.channel.send("No active beef tasks to stop.")
