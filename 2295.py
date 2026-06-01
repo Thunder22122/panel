@@ -49,6 +49,7 @@ mimic_enabled = False   # global flag for mimic mode
 reaction_emojis = []   # list of emojis to react with
 ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 pending_import = {}   # user_id -> wordlist name
+deleted_cache = {}
 snipe_enabled = set()
 
 # ========== LOAD / SAVE HELPERS ==========
