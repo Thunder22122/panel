@@ -441,7 +441,8 @@ async def on_message(message):
 
     elif cmd == ".wordlist" and len(args) == 1:
         name = args[0]
-        lines = load_lines(f"wordlist_{name}.txt")
+        base = name if not name.endswith('.txt') else name[:-4]
+        lines = load_lines(f"{base}.txt")
         if lines:
             wordlists[name] = lines
             await message.channel.send(f"Loaded wordlist '{name}' with {len(lines)} lines")
