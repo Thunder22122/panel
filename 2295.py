@@ -774,7 +774,11 @@ async def on_message(message):
                 print(f"[Beef] {alias} logged in as {temp_client.user}")
         
                 # Wait for client to be fully ready
-                await temp_client.wait_until_ready()
+                try:
+                    await asyncio.wait_for(temp_client.wait_until_ready(), timeout=10)
+                except asyncio.TimeoutError:
+                    print(f"[Beef] {alias} client never became ready – token likely invalid or already in use elsewhere")
+                    return
         
                 # Give a little extra time for cache to populate
                 await asyncio.sleep(1)
