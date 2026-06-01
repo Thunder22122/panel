@@ -459,7 +459,7 @@ async def on_message(message):
     elif cmd == ".importwl" and len(args) == 1:
         name = args[0]
         pending_import[message.author.id] = name
-        await message.channel.send(f"📤 Please upload the `.txt` file for wordlist **{name}** now. (Send only the file, no extra text)")
+        await message.channel.send(f" upload the `.txt` file for wordlist **{name}** now (Send only the file, no extra text)")
 
     elif cmd == ".autopaste" and len(args) >= 3:
         try:
