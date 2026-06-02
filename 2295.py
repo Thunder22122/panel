@@ -51,6 +51,8 @@ ar_replied_ids = {}   # user_id -> set of message IDs already replied to
 pending_import = {}   # user_id -> wordlist name
 deleted_cache = {}
 snipe_enabled = set()
+spamall_tasks = {}          # alias -> asyncio.Task for spam workers
+spamall_interval = 2        # seconds between messages (default, adjustable via command)
 
 # ========== LOAD / SAVE HELPERS ==========
 async def load_lines_async(file_path):
@@ -863,12 +865,6 @@ async def on_message(message):
                         user_data = await resp.json()
                         print(f"[Beef] {alias} authenticated as {user_data['username']}")
     
-                    async with session.post(url, json=test_payload, headers=headers) as resp:
-                        if resp.status not in (200, 204):
-                            print(f"[Beef] {alias} test failed: {resp.status}")
-                        else:
-                            print(f"[Beef] {alias} test sent")
-    
                     # Main loop
                     while True:
                         await asyncio.sleep(0)
@@ -950,21 +946,44 @@ async def on_message(message):
         if not emojis:
             await message.channel.send("Usage: `.reactall 🎉 ✅ 😂`")
             return
-
+    
         # Cancel any existing reaction tasks
         for alias, task in list(react_tasks.items()):
             if not task.done():
                 task.cancel()
         react_tasks.clear()
-
+    
         target_channel = message.channel
-
+        target_guild = target_channel.guild
+    
         async def react_worker(token_info, channel, alias, emoji_list):
             temp_client = discord.Client(self_bot=True)
             try:
                 await temp_client.start(token_info["token"])
+                # Wait for client to be fully ready
+                await temp_client.wait_until_ready()
                 print(f"[React] {alias} logged in as {temp_client.user}")
-                # Listen for messages in the target channel
+    
+                # Verify the alt can see the target channel
+                if target_guild:
+                    guild = temp_client.get_guild(target_guild.id)
+                    if not guild:
+                        raise Exception(f"Alt {alias} is not in guild {target_guild.name}. Invite it first.")
+                    channel = guild.get_channel(target_channel.id)
+                    if not channel:
+                        raise Exception(f"Alt {alias} cannot see channel #{target_channel.name}. Check permissions.")
+                else:
+                    # DM channel – try to fetch/create
+                    channel = temp_client.get_channel(target_channel.id)
+                    if not channel:
+                        user = await temp_client.fetch_user(target_channel.recipient.id)
+                        channel = await user.create_dm()
+                        print(f"[React] {alias} created DM channel")
+    
+                # Send a test reaction to confirm connection (optional)
+                # await channel.send(" React worker online")  # uncomment if you want a test message
+    
+                # Now listen for messages from this alt in this channel
                 @temp_client.event
                 async def on_message(msg):
                     if msg.channel.id != channel.id:
@@ -976,24 +995,25 @@ async def on_message(message):
                                 await asyncio.sleep(0.5)
                             except:
                                 pass
-                # Keep the client alive until cancelled
-                while True:
-                    await asyncio.sleep(5)
+    
+                # Keep the client alive (the event loop runs automatically)
+                # We just need to prevent the task from exiting. Use a long-lived await.
+                await asyncio.Event().wait()  # wait forever (task will be cancelled on .reactallstop)
             except asyncio.CancelledError:
                 print(f"[React] {alias} task cancelled")
-                await temp_client.close()
-                raise
             except Exception as e:
                 print(f"[React] {alias} error: {e}")
+                await message.channel.send(f" **{alias}** error: {e}")
             finally:
                 await temp_client.close()
-
+    
         for token_info in token_pool:
             alias = token_info.get("alias", "unknown")
             task = asyncio.create_task(react_worker(token_info, target_channel, alias, emojis))
             react_tasks[alias] = task
-
-        await message.channel.send(f" Auto-reaction started for {len(token_pool)} tokens with emojis: {' '.join(emojis)}")
+            await asyncio.sleep(1)  # small delay between starting workers
+    
+        await message.channel.send(f" Auto-reaction started for {len(token_pool)} token(s) with emojis: {' '.join(emojis)}")
 
     elif cmd == ".reactallstop":
         if not react_tasks:
@@ -1106,6 +1126,86 @@ async def on_message(message):
         anti_target_channel = None
         await message.channel.send(" disabled ")
 
+    elif cmd == ".spamall":
+        # Parse arguments: [channel_id] [message] or [message] (current channel)
+        target_channel_id = None
+        msg_start = 0
+        if len(args) >= 1 and args[0].isdigit():
+            target_channel_id = int(args[0])
+            msg_start = 1
+        else:
+            target_channel_id = message.channel.id
+            msg_start = 0
+        spam_msg = " ".join(args[msg_start:])
+        if not spam_msg:
+            await message.channel.send("Usage: `.spamall <message>` or `.spamall <channel_id> <message>`")
+            return
+    
+        if not token_pool:
+            await message.channel.send("No tokens loaded. Use `.host <token>` first.")
+            return
+    
+        # Optional: allow custom delay (e.g., .spamall 2 hello world)
+        # If first arg is a float, treat as delay (override default)
+        delay = spamall_interval
+        # (We'll keep it simple; use fixed delay. You can add .spamall <delay> <msg> later)
+    
+        # Cancel any existing spamall tasks
+        for alias, task in list(spamall_tasks.items()):
+            if not task.done():
+                task.cancel()
+        spamall_tasks.clear()
+    
+        async def spam_worker(token_info, channel_id, alias, msg, interval):
+            token = token_info["token"]
+            headers = {"Authorization": token, "Content-Type": "application/json"}
+            url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Verify token
+                    async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
+                        if resp.status != 200:
+                            print(f"[Spam] {alias} token invalid: HTTP {resp.status}")
+                            return
+                        user_data = await resp.json()
+                        print(f"[Spam] {alias} authenticated as {user_data['username']}")
+    
+                    # Main spam loop
+                    while True:
+                        await asyncio.sleep(0)  # cancellation point
+                        payload = {"content": msg}
+                        async with session.post(url, json=payload, headers=headers) as resp:
+                            if resp.status not in (200, 204):
+                                print(f"[Spam] {alias} send failed: {resp.status}")
+                            else:
+                                print(f"[Spam] {alias} sent: {msg}")
+                        await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                print(f"[Spam] {alias} task cancelled")
+            except Exception as e:
+                print(f"[Spam] {alias} error: {e}")
+                await message.channel.send(f" **{alias}** spam error: {e}")
+    
+        for token_info in token_pool:
+            alias = token_info.get("alias", "unknown")
+            task = asyncio.create_task(spam_worker(token_info, target_channel_id, alias, spam_msg, spamall_interval))
+            spamall_tasks[alias] = task
+            await asyncio.sleep(1)  # slight delay between starting workers
+    
+        await message.channel.send(f" Spamall started with {len(token_pool)} token(s) in <#{target_channel_id}>: `{spam_msg[:50]}`")
+    
+    elif cmd == ".spamallstop":
+        if not spamall_tasks:
+            await message.channel.send("No active spamall tasks to stop.")
+            return
+        count = 0
+        for alias, task in list(spamall_tasks.items()):
+            if not task.done():
+                task.cancel()
+                count += 1
+        spamall_tasks.clear()
+        await message.channel.send(f" Stopped {count} spamall task(s).")
+
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
         channel = client.get_channel(ch_id)
@@ -1170,6 +1270,7 @@ def build_menu_pages():
         (".startnames", ".startnames name1,name2,name3"),
         (".stopnames", "No arguments"),
         (".spam", ".spam <message>"),
+        (".spamall", ".spamall <message>"),
         (".stopspam", "No arguments"),
         (".check", ".check @user <limit>"),
         (".stopafk", "No arguments"),
