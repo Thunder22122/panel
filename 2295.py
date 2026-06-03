@@ -1339,7 +1339,7 @@ async def on_message(message):
             channel = message.channel
         if len(args) >= 2 and args[1].isdigit():
             limit = min(int(args[1]), 50000)  # cap at 50k
-        await message.channel.send(f"📥 Archiving last **{limit}** messages from {channel.mention}. This may take a moment...")
+        await message.channel.send(f" Archiving last **{limit}** messages from {channel.mention}")
         msgs = []
         async for msg in channel.history(limit=limit, oldest_first=True):
             msgs.append(msg)
@@ -1453,7 +1453,7 @@ async def on_message(message):
     """
         for msg in msgs:
             author = msg.author
-            name = author.global_name or author.name
+            name = author.display_name
             # Avatar colour based on name hash (simple)
             avatar_char = name[0].upper() if name else "?"
             timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
