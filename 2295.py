@@ -1263,9 +1263,9 @@ async def on_message(message):
         for _ in range(loops):
             try:
                 vc = await channel.connect()
-                await asyncio.sleep(1)
+                await asyncio.sleep(3)
                 await vc.disconnect()
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
             except:
                 pass
         await message.channel.send(f"jvc done in {channel.name}.")
@@ -1325,6 +1325,23 @@ async def on_message(message):
         else:
             link = domain_template.format(name) + random.choice(paths)
         await message.channel.send(f" Random link for **{name}**: {link}")
+
+    elif cmd == ".archive" and len(args) == 1:
+        channel_id = int(args[0])
+        channel = client.get_channel(channel_id)
+        if not channel:
+            await message.channel.send("Invalid channel ID.")
+            return
+        msgs = []
+        async for msg in channel.history(limit=None):
+            msgs.append(msg)
+        html = "<html><body>"
+        for msg in reversed(msgs):
+            html += f"<p><b>{msg.author}</b> ({msg.created_at}): {msg.content}</p>"
+        html += "</body></html>"
+        with open(f"archive_{channel_id}.html", "w", encoding="utf-8") as f:
+            f.write(html)
+        await message.channel.send(f"Archived {len(msgs)} messages to `archive_{channel_id}.html`")
 
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
@@ -1438,9 +1455,9 @@ def build_menu_pages():
         (".snipeset", "No arguments"),
         (".snipestop", "No arguments>"),
         (".joinall", ".joinall <server_link/alias/invite>"),
-        (".vcspam", "No arguments"),
-        (".archive", "No arguments(for exporting chat)"),
-        (".upload", "No arguments(for uploading files)"),
+        (".vcspam", ".vcspam <vc id> <loops>"),
+        (".archive", ".archive <channel_id> (for exporting chat)"),
+        (".upload", ".upload <url>(for uploading files)"),
         (".linkgen", ".linkgen <name>"),
         (".ping", "No arguments"),
         (".menu", "No arguments"),
