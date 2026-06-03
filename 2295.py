@@ -1234,8 +1234,17 @@ async def on_message(message):
                             data = await resp.json()
                             guild_name = data.get("guild", {}).get("name", "Unknown server")
                             results.append(f" **{alias}** joined `{guild_name}`")
-                        elif resp.status == 400:
-                            results.append(f" **{alias}** – Invalid invite or already in server")
+                            elif resp.status == 400:
+                                err_data = await resp.json()
+                                err_msg = err_data.get("message", "Unknown error")
+                                if "already a member" in err_msg.lower():
+                                    results.append(f" **{alias}** – Already in server")
+                                elif "phone verification" in err_msg.lower() or "phone number" in err_msg.lower():
+                                    results.append(f" **{alias}** – Phone verification required")
+                                elif "invite" in err_msg.lower():
+                                    results.append(f" **{alias}** – Invalid invite (expired or invalid code)")
+                                else:
+                                    results.append(f" **{alias}** – Failed: {err_msg[:100]}")
                         elif resp.status == 404:
                             results.append(f" **{alias}** – Invite link expired or invalid")
                         else:
