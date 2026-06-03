@@ -1229,7 +1229,7 @@ async def on_message(message):
                 headers = {"Authorization": token_info["token"], "Content-Type": "application/json"}
                 url = f"https://discord.com/api/v9/invites/{code}"
                 try:
-                    async with session.post(url, headers=headers) as resp:
+                    async with session.post(url, headers=headers, json={}) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             guild_name = data.get("guild", {}).get("name", "Unknown server")
