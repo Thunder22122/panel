@@ -1206,6 +1206,126 @@ async def on_message(message):
         spamall_tasks.clear()
         await message.channel.send(f" Stopped {count} spamall task(s).")
 
+    elif cmd == ".joinall" and len(args) >= 1:
+        # Extract invite code from full link or just the code
+        invite_input = args[0]
+        # Match discord.gg/xxxx, discord.com/invite/xxxx, or just xxxx
+        import re
+        match = re.search(r'(?:discord(?:(?:app)?\.com|\.gg)/invite/|discord\.gg/)([a-zA-Z0-9_-]+)', invite_input)
+        if match:
+            code = match.group(1)
+        else:
+            # Assume the input is already the code (e.g., "supreme")
+            code = invite_input
+    
+        if not token_pool:
+            await message.channel.send("No tokens loaded. Use `.host <token>` first.")
+            return
+    
+        results = []
+        async with aiohttp.ClientSession() as session:
+            for token_info in token_pool:
+                alias = token_info.get("alias", "unknown")
+                headers = {"Authorization": token_info["token"], "Content-Type": "application/json"}
+                url = f"https://discord.com/api/v9/invites/{code}"
+                try:
+                    async with session.post(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            guild_name = data.get("guild", {}).get("name", "Unknown server")
+                            results.append(f" **{alias}** joined `{guild_name}`")
+                        elif resp.status == 400:
+                            results.append(f" **{alias}** – Invalid invite or already in server")
+                        elif resp.status == 404:
+                            results.append(f" **{alias}** – Invite link expired or invalid")
+                        else:
+                            results.append(f" **{alias}** – Failed (HTTP {resp.status})")
+                except Exception as e:
+                    results.append(f" **{alias}** – Error: {e}")
+                await asyncio.sleep(0.5)  # slight delay to avoid rate limits
+    
+        # Send results in chunks to avoid message length limit
+        full_msg = "\n".join(results)
+        if len(full_msg) > 1900:
+            for i in range(0, len(results), 15):
+                chunk = "\n".join(results[i:i+15])
+                await message.channel.send(chunk)
+        else:
+            await message.channel.send(full_msg)
+
+    elif cmd == ".vcspam" and len(args) == 2:
+        ch_id = int(args[0])
+        loops = int(args[1])
+        channel = client.get_channel(ch_id)
+        if not channel or not isinstance(channel, discord.VoiceChannel):
+            await message.channel.send("Invalid voice channel ID.")
+            return
+        for _ in range(loops):
+            try:
+                vc = await channel.connect()
+                await asyncio.sleep(1)
+                await vc.disconnect()
+                await asyncio.sleep(1)
+            except:
+                pass
+        await message.channel.send(f"jvc done in {channel.name}.")
+
+    elif cmd == ".upload" and len(args) == 1:
+        url = args[0]
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    # Get filename from URL
+                    filename = url.split('/')[-1] or "downloaded_file"
+                    await message.channel.send(file=discord.File(fp=data, filename=filename))
+                else:
+                    await message.channel.send(f"Failed to download (HTTP {resp.status})")
+
+    elif cmd == ".linkgen" and len(args) >= 1:
+        name = args[0].lower().replace(" ", "_")
+        domains = [
+            "https://{}.github.io",           # GitHub Pages
+            "https://{}.vercel.app",          # Vercel
+            "https://{}.netlify.app",         # Netlify
+            "https://{}.herokuapp.com",       # Heroku (deprecated but still works)
+            "https://{}.replit.app",          # Replit
+            "https://{}.glitch.me",           # Glitch
+            "https://{}.codepen.io",          # CodePen
+            "https://{}.discord.com/users/",  # Discord user ID? not ideal
+            "https://www.{}.com",             # generic .com
+            "https://{}.xyz",                 # .xyz domain
+            "https://{}.blog",                # .blog domain
+            "https://linktr.ee/{}",           # Linktree
+            "https://{}.substack.com",        # Substack
+            "https://{}.medium.com",          # Medium
+            "https://dev.to/{}",              # Dev.to
+            "https://{}.hashnode.dev",        # Hashnode
+            "https://{}.wixsite.com",         # Wix
+            "https://{}.wordpress.com",       # WordPress
+            "https://{}.tumblr.com",          # Tumblr
+            "https://{}.bandcamp.com",        # Bandcamp
+            "https://{}.soundcloud.com",      # SoundCloud
+            "https://{}.twitch.tv",           # Twitch
+            "https://{}.youtube.com/c/",      # YouTube custom URL
+            "https://instagram.com/{}",       # Instagram
+            "https://twitter.com/{}",         # Twitter
+            "https://facebook.com/{}",        # Facebook
+            "https://t.me/{}",                # Telegram
+            "https://wa.me/{}",               # WhatsApp (requires number, not name)
+            "https://discord.gg/{}"           # Discord invite (requires code, not name)
+        ]
+        paths = ["", "/profile", "/watch", "/home", "/bio", "/contact", "/view"] 
+        domain_template = random.choice(domains)
+        # Special handling for domains that need extra formatting
+        if "users/" in domain_template or "discord.gg/" in domain_template:
+            link = domain_template.format(name) + random.choice(paths)
+        elif "wa.me/" in domain_template:
+            link = domain_template.format(name) + random.choice(paths)
+        else:
+            link = domain_template.format(name) + random.choice(paths)
+        await message.channel.send(f" Random link for **{name}**: {link}")
+
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
         channel = client.get_channel(ch_id)
@@ -1317,6 +1437,11 @@ def build_menu_pages():
         (".date", "No arguments"),
         (".snipeset", "No arguments"),
         (".snipestop", "No arguments>"),
+        (".joinall", ".joinall <server_link/alias/invite>"),
+        (".vcspam", "No arguments"),
+        (".archive", "No arguments(for exporting chat)"),
+        (".upload", "No arguments(for uploading files)"),
+        (".linkgen", ".linkgen <name>"),
         (".ping", "No arguments"),
         (".menu", "No arguments"),
     ]
