@@ -1236,19 +1236,25 @@ async def on_message(message):
                             results.append(f" **{alias}** joined `{guild_name}`")
                         elif resp.status == 400:
                             err_data = await resp.json()
-                            err_msg = err_data.get("message", "Unknown error")
+                            # Try multiple ways to get the error message
+                            err_msg = err_data.get("message")
+                            if not err_msg:
+                                # Check for nested errors (e.g., {"errors": {"invite_code": {"_errors": [{"message": "..."}]}}})
+                                if "errors" in err_data:
+                                    for key, val in err_data["errors"].items():
+                                        if "_errors" in val:
+                                            err_msg = val["_errors"][0].get("message")
+                                            break
+                                if not err_msg:
+                                    err_msg = f"Code {err_data.get('code', 'unknown')}"
                             if "already a member" in err_msg.lower():
                                 results.append(f" **{alias}** – Already in server")
-                            elif "phone verification" in err_msg.lower() or "phone number" in err_msg.lower():
+                            elif "phone verification" in err_msg.lower():
                                 results.append(f" **{alias}** – Phone verification required")
                             elif "invite" in err_msg.lower():
                                 results.append(f" **{alias}** – Invalid invite (expired or invalid code)")
                             else:
                                 results.append(f" **{alias}** – Failed: {err_msg[:100]}")
-                        elif resp.status == 404:
-                            results.append(f" **{alias}** – Invite link expired or invalid")
-                        else:
-                            results.append(f" **{alias}** – Failed (HTTP {resp.status})")
                 except Exception as e:
                     results.append(f" **{alias}** – Error: {e}")
                 await asyncio.sleep(0.5)  # slight delay to avoid rate limits
