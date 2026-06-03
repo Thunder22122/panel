@@ -1237,7 +1237,7 @@ async def on_message(message):
                         elif resp.status == 400:
                             err_data = await resp.json()
                             err_msg = err_data.get("message", "Unknown error")
-                             if "already a member" in err_msg.lower():
+                            if "already a member" in err_msg.lower():
                                 results.append(f" **{alias}** – Already in server")
                             elif "phone verification" in err_msg.lower() or "phone number" in err_msg.lower():
                                 results.append(f" **{alias}** – Phone verification required")
