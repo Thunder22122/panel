@@ -1326,22 +1326,172 @@ async def on_message(message):
             link = domain_template.format(name) + random.choice(paths)
         await message.channel.send(f" Random link for **{name}**: {link}")
 
-    elif cmd == ".archive" and len(args) == 1:
-        channel_id = int(args[0])
-        channel = client.get_channel(channel_id)
-        if not channel:
-            await message.channel.send("Invalid channel ID.")
-            return
+    elif cmd == ".archive":
+        # Usage: .archive [channel_id] [limit]
+        channel = None
+        limit = 1000  # default limit
+        if len(args) >= 1 and args[0].isdigit():
+            channel = client.get_channel(int(args[0]))
+            if not channel:
+                await message.channel.send("Invalid channel ID.")
+                return
+        else:
+            channel = message.channel
+        if len(args) >= 2 and args[1].isdigit():
+            limit = min(int(args[1]), 50000)  # cap at 50k
+        await message.channel.send(f"📥 Archiving last **{limit}** messages from {channel.mention}. This may take a moment...")
         msgs = []
-        async for msg in channel.history(limit=None):
+        async for msg in channel.history(limit=limit, oldest_first=True):
             msgs.append(msg)
-        html = "<html><body>"
-        for msg in reversed(msgs):
-            html += f"<p><b>{msg.author}</b> ({msg.created_at}): {msg.content}</p>"
-        html += "</body></html>"
-        with open(f"archive_{channel_id}.html", "w", encoding="utf-8") as f:
+        if not msgs:
+            await message.channel.send("No messages found.")
+            return
+    
+        # Generate modern HTML with Discord-like styling
+        html = f"""<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Discord Chat Archive – {channel.name}</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                background: #36393f;
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                padding: 20px;
+                color: #dcddde;
+            }}
+            .container {{
+                max-width: 1000px;
+                margin: 0 auto;
+                background: #2f3136;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .header {{
+                background: #202225;
+                padding: 16px 20px;
+                border-bottom: 1px solid #292b2f;
+            }}
+            .header h1 {{
+                font-size: 1.4rem;
+                color: #fff;
+                margin-bottom: 4px;
+            }}
+            .header p {{
+                font-size: 0.85rem;
+                color: #8e9297;
+            }}
+            .message {{
+                padding: 12px 20px;
+                border-bottom: 1px solid #292b2f;
+                transition: background 0.1s;
+                display: flex;
+                gap: 16px;
+            }}
+            .message:hover {{
+                background: #32353b;
+            }}
+            .avatar {{
+                flex-shrink: 0;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: #5865f2;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                color: white;
+                font-size: 1rem;
+            }}
+            .content {{
+                flex: 1;
+            }}
+            .author {{
+                font-weight: 600;
+                color: #fff;
+                margin-right: 8px;
+            }}
+            .timestamp {{
+                font-size: 0.7rem;
+                color: #8e9297;
+            }}
+            .message-text {{
+                margin-top: 4px;
+                word-wrap: break-word;
+                white-space: pre-wrap;
+            }}
+            .attachment {{
+                margin-top: 6px;
+                background: #1e1f22;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 0.8rem;
+                display: inline-block;
+            }}
+            .attachment a {{
+                color: #00b0f4;
+                text-decoration: none;
+            }}
+            .footer {{
+                background: #202225;
+                padding: 10px 20px;
+                font-size: 0.75rem;
+                text-align: center;
+                color: #8e9297;
+            }}
+        </style>
+    </head>
+    <body>
+    <div class="container">
+        <div class="header">
+            <h1>#{channel.name}</h1>
+            <p>{len(msgs)} messages • Archived on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+    """
+        for msg in msgs:
+            author = msg.author
+            name = author.global_name or author.name
+            # Avatar colour based on name hash (simple)
+            avatar_char = name[0].upper() if name else "?"
+            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            content = msg.content or ""
+            # Basic HTML escape
+            content = content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            # Attachments
+            attachments_html = ""
+            if msg.attachments:
+                for att in msg.attachments:
+                    attachments_html += f'<div class="attachment"><a href="{att.url}" target="_blank">{att.filename}</a></div>'
+            html += f"""
+        <div class="message">
+            <div class="avatar">{avatar_char}</div>
+            <div class="content">
+                <span class="author">{name}</span>
+                <span class="timestamp">{timestamp}</span>
+                <div class="message-text">{content}</div>
+                {attachments_html}
+            </div>
+        </div>
+    """
+        html += """
+        <div class="footer">
+            Generated by Supreme/2295 Tool
+        </div>
+    </div>
+    </body>
+    </html>
+    """
+        filename = f"archive_{channel.id}_{int(time.time())}.html"
+        with open(filename, "w", encoding="utf-8") as f:
             f.write(html)
-        await message.channel.send(f"Archived {len(msgs)} messages to `archive_{channel_id}.html`")
+        # Send the file
+        with open(filename, "rb") as f:
+            await message.channel.send(file=discord.File(f, filename))
+        os.remove(filename)
+        await message.channel.send(f" Archived **{len(msgs)}** messages from {channel.mention}.")
 
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
@@ -1476,7 +1626,7 @@ async def show_menu_page(channel, page_num):
     page = menu_pages[page_num]
     msg = "## =============== Supreme/2295 Tool  (page {}/{}) ===============".format(page_num+1, len(menu_pages))
     for cmd, desc in page:
-        msg += f"```{cmd} – {desc}```\n"
+        msg += f"```{cmd} – {desc}```"
     msg += "\nUse `.n` for next page, `.p` for previous page"
     await channel.send(msg)
 
