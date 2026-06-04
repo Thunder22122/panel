@@ -1345,7 +1345,7 @@ async def on_message(message):
             link = domain_template.format(name) + random.choice(paths)
         else:
             link = domain_template.format(name) + random.choice(paths)
-        await message.channel.send(f" Random link for **{name}**: {link}")
+        await message.channel.send(f"{link}")
 
     elif cmd == ".archive":
         # Usage: .archive [channel_id] [limit]
@@ -1647,6 +1647,7 @@ def build_menu_pages():
         (".archive", ".archive <channel_id> (for exporting chat)"),
         (".upload", ".upload <url>(for uploading files)"),
         (".linkgen", ".linkgen <name>"),
+        (".updateproxies", "No arguments"),
         (".ping", "No arguments"),
         (".menu", "No arguments"),
     ]
