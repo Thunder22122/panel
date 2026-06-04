@@ -1510,25 +1510,32 @@ async def on_message(message):
 
     elif cmd == ".updateproxies":
         await message.channel.send(" Fetching fresh proxy list...")
-        try:
-            proxy_urls = [
-                "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/http.txt",
-                "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/http.txt",
-                "https://raw.githubusercontent.com/gfpcom/free-proxy-list/main/list/http.txt"
-            ]
-            success = False
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        text = await resp.text()
-                        proxies = [line.strip() for line in text.splitlines() if line.strip()]
-                        with open("proxies.txt", "w") as f:
-                            f.write("\n".join(proxies))
-                        await message.channel.send(f" Saved {len(proxies)} proxies to `proxies.txt`")
-                    else:
-                        await message.channel.send(f" Failed to fetch proxies (HTTP {resp.status})")
-        except Exception as e:
-            await message.channel.send(f" Error: {e}")
+        proxy_urls = [
+            "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/http.txt",
+            "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/http.txt",
+            "https://raw.githubusercontent.com/gfpcom/free-proxy-list/main/list/http.txt"
+        ]
+        success = False
+        async with aiohttp.ClientSession() as session:
+            for url in proxy_urls:
+                try:
+                    async with session.get(url, timeout=15) as resp:
+                        if resp.status == 200:
+                            text = await resp.text()
+                            proxies = [line.strip() for line in text.splitlines() if line.strip()]
+                            if proxies:
+                                with open("proxies.txt", "w") as f:
+                                    f.write("\n".join(proxies))
+                                await message.channel.send(f" Saved {len(proxies)} proxies from `{url.split('/')[-1]}`")
+                                success = True
+                                break
+                        else:
+                            print(f"Failed to fetch from {url}: HTTP {resp.status}")
+                except Exception as e:
+                    print(f"Error fetching {url}: {e}")
+                    continue
+        if not success:
+            await message.channel.send(" All proxy sources failed. Check your internet or try again later.")
 
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
