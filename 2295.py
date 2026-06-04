@@ -83,12 +83,6 @@ def get_random_proxy():
         return None
     return random.choice(proxies)
 
-def get_random_proxy():
-    proxies = load_proxies()  # reuses your existing load_proxies() function
-    if not proxies:
-        return None
-    return random.choice(proxies)
-
 def save_wordlist(name, lines):
     with open(f"wordlist_{name}.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -1517,7 +1511,12 @@ async def on_message(message):
     elif cmd == ".updateproxies":
         await message.channel.send(" Fetching fresh proxy list...")
         try:
-            url = "https://raw.githubusercontent.com/gfpcom/free-proxy-list/main/list/http.txt"
+            proxy_urls = [
+                "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/http.txt",
+                "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/http.txt",
+                "https://raw.githubusercontent.com/gfpcom/free-proxy-list/main/list/http.txt"
+            ]
+            success = False
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
