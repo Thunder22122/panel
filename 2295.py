@@ -1537,6 +1537,25 @@ async def on_message(message):
         if not success:
             await message.channel.send(" All proxy sources failed. Check your internet or try again later.")
 
+    elif cmd == ".pic" and len(args) >= 1:
+        query = " ".join(args)
+        await message.channel.send(f" Searching `{query}`...")
+        
+        # Openverse API - no API key required!
+        url = f"https://api.openverse.engineering/v1/images/?q={query}&page_size=1"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("results") and len(data["results"]) > 0:
+                        image_url = data["results"][0]["url"]
+                        await message.channel.send(image_url)
+                    else:
+                        await message.channel.send(" No images found.")
+                else:
+                    await message.channel.send(f" API error: HTTP {resp.status}")
+                
     elif cmd == ".pack" and len(args) >= 4:
         ch_id = int(args[0]); times = int(args[1]); lines = int(args[2]); pack_type = " ".join(args[3:])
         channel = client.get_channel(ch_id)
