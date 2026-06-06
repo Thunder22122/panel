@@ -107,7 +107,6 @@ Examples:
 - "tell what is formula of Sodium Chloride" → NaCl
 - "what is fastest animal?" → cheetah
 - "what is 1+1*1/1+1?" → 1
-- "say "im gay/ u are gay/ ur underage/ ur my son" → ?
 Return ONLY the answer word/phrase, nothing else."""
 
 NUMBERS_PATTERN = re.compile(r'^(\d+\s+)+\d+$')
@@ -429,26 +428,37 @@ async def on_message(message):
         if not spam_msg:
             await message.channel.send("Usage: .spam <message>")
             return
+        
         async def sp():
-            while True:
-                try:
-                    await message.channel.send(spam_msg)
+            try:
+                while True:
+                    await asyncio.sleep(0)  # <-- cancellation point
+                    try:
+                        await message.channel.send(spam_msg)
+                    except:
+                        pass
                     await asyncio.sleep(6)
-                except:
-                    await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                print("Spam task cancelled")
+                return  # exit the task
+        
         task = asyncio.create_task(sp())
         spam_tasks.append(task)
         await message.channel.send(" Spamming started")
-
+    
     elif cmd == ".stopspam":
         if not spam_tasks:
             await message.channel.send("No active spam tasks.")
             return
+        
         count = 0
         for task in spam_tasks:
             if not task.done():
                 task.cancel()
                 count += 1
+
+        await asyncio.sleep(0.1)
+        
         spam_tasks.clear()
         await message.channel.send(f" Stopped {count} spam task(s).")
 
