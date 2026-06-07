@@ -1331,7 +1331,6 @@ async def on_message(message):
         # Extract invite code from full link or just the code
         invite_input = args[0]
         # Match discord.gg/xxxx, discord.com/invite/xxxx, or just xxxx
-        import re
         match = re.search(r'(?:discord(?:(?:app)?\.com|\.gg)/invite/|discord\.gg/)([a-zA-Z0-9_-]+)', invite_input)
         if match:
             code = match.group(1)
