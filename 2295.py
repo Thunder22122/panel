@@ -114,25 +114,24 @@ def extract_target_channel(content, guild):
                 return channel
     
     # Pattern 4: Channel name without # (e.g., "general" or "txt 4")
-    # This handles multi-word channel names like "txt 4"
     match = re.search(r'(?:reply|say|tell|answer|send)\s+in\s+(.+?)(?:\s+[\w]+|$)', content, re.IGNORECASE)
     if match:
         channel_name = match.group(1).strip().lower()
-        # Remove any trailing words that might be part of the answer
-        # Split by spaces and try to find a channel that matches
+        # Try exact match first
         for channel in guild.channels:
             if channel.name.lower() == channel_name:
                 return channel
-            # Handle "txt 4" - check if channel name contains these words
-            if all(word in channel.name.lower() for word in channel_name.split()):
-                return channel
-            # Match ignoring spaces vs dashes (e.g., "txt-4" vs "txt 4")
-            normalized_query = channel_query.replace(' ', '-').replace('_', '-')
+        
+        # Try matching ignoring spaces vs dashes (e.g., "txt-4" vs "txt 4")
+        normalized_query = channel_name.replace(' ', '-').replace('_', '-')
+        for channel in guild.channels:
             normalized_name = channel.name.lower().replace(' ', '-').replace('_', '-')
             if normalized_query == normalized_name:
                 return channel
-            # Check if channel name contains all words from query
-            query_words = set(channel_query.split())
+        
+        # Try checking if channel name contains all words from query
+        query_words = set(channel_name.split())
+        for channel in guild.channels:
             name_words = set(channel.name.lower().split())
             if query_words.issubset(name_words):
                 return channel
@@ -319,15 +318,12 @@ async def on_message(message):
     if anti_target_channel and message.channel.id == anti_target_channel:
         author_id = message.author.id
         content = message.content
-        content_lower = content.lower()
         
         # ========== STEP 1: Check if this is an AFK check (with Groq) ==========
-        # Extract answer using Groq AI (handles ANY type of check)
         answer = extract_answer(content)
         
         # ========== STEP 2: If it's an AFK check, reply immediately ==========
         if answer:
-            # Check if target channel specified in the message
             target_channel = extract_target_channel(content, message.guild)
             if target_channel:
                 await target_channel.send(f"# {answer}")
@@ -338,7 +334,6 @@ async def on_message(message):
             return  # Don't process counting for AFK check messages
         
         # ========== STEP 3: Counting detection (only if not an AFK check) ==========
-        # Update history for counting
         if author_id not in anti_user_history:
             anti_user_history[author_id] = deque(maxlen=10)
         anti_user_history[author_id].append((content, message))
@@ -371,39 +366,6 @@ async def on_message(message):
         else:
             anti_user_last_number[author_id] = 0
         
-        # ========== COUNTING DETECTION (original logic) ==========
-        if author_id not in anti_user_history:
-            anti_user_history[author_id] = deque(maxlen=10)
-        anti_user_history[author_id].append((content, message))
-        
-        num = parse_count_number(content)
-        if num is not None:
-            last = anti_user_last_number.get(author_id, 0)
-            if num == last + 1:
-                anti_user_last_number[author_id] = num
-                if num == 9:
-                    history = list(anti_user_history.get(author_id, []))
-                    answer = None
-                    for prev_content, _ in reversed(history):
-                        if prev_content == content: continue
-                        ans = extract_answer(prev_content)
-                        if ans:
-                            answer = ans
-                            break
-                    if answer:
-                        # Check if target channel specified
-                        target_channel = extract_target_channel(content, message.guild)
-                        if target_channel:
-                            await target_channel.send(f"# {answer}")
-                            print(f"[Anti] Counting reply sent to #{target_channel.name}: {answer}")
-                        else:
-                            await message.channel.send(f"# {answer}")
-                            print(f"Anti AFK replied: {answer}")
-                    anti_user_last_number[author_id] = 0
-            else:
-                anti_user_last_number[author_id] = 0
-        else:
-            anti_user_last_number[author_id] = 0
 
         # ----- Auto-reaction (instant) -----
     if message.author == client.user and reaction_emojis:
