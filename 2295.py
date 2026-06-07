@@ -88,11 +88,62 @@ def save_wordlist(name, lines):
         f.write("\n".join(lines))
     wordlists[name] = lines
 
+def extract_target_channel(content, guild):
+    """Extract channel from message like 'reply in #channel', 'reply in general', or 'reply in txt 4'"""
+    if not guild:
+        return None
+    
+    # Pattern 1: Channel mention <#123456789>
+    match = re.search(r'(?:reply|tell|say|answer|send)\s+in\s+<#(\d+)>', content, re.IGNORECASE)
+    if match:
+        channel_id = int(match.group(1))
+        return guild.get_channel(channel_id)
+    
+    # Pattern 2: Channel ID (just numbers)
+    match = re.search(r'(?:reply|say|tell|answer|send)\s+in\s+(\d+)', content, re.IGNORECASE)
+    if match:
+        channel_id = int(match.group(1))
+        return guild.get_channel(channel_id)
+    
+    # Pattern 3: Channel name with # (e.g., "#general")
+    match = re.search(r'(?:reply|say|tell|answer|send)\s+in\s+#(\S+)', content, re.IGNORECASE)
+    if match:
+        channel_name = match.group(1).lower()
+        for channel in guild.channels:
+            if channel.name.lower() == channel_name:
+                return channel
+    
+    # Pattern 4: Channel name without # (e.g., "general" or "txt 4")
+    # This handles multi-word channel names like "txt 4"
+    match = re.search(r'(?:reply|say|tell|answer|send)\s+in\s+(.+?)(?:\s+[\w]+|$)', content, re.IGNORECASE)
+    if match:
+        channel_name = match.group(1).strip().lower()
+        # Remove any trailing words that might be part of the answer
+        # Split by spaces and try to find a channel that matches
+        for channel in guild.channels:
+            if channel.name.lower() == channel_name:
+                return channel
+            # Handle "txt 4" - check if channel name contains these words
+            if all(word in channel.name.lower() for word in channel_name.split()):
+                return channel
+            # Match ignoring spaces vs dashes (e.g., "txt-4" vs "txt 4")
+            normalized_query = channel_query.replace(' ', '-').replace('_', '-')
+            normalized_name = channel.name.lower().replace(' ', '-').replace('_', '-')
+            if normalized_query == normalized_name:
+                return channel
+            # Check if channel name contains all words from query
+            query_words = set(channel_query.split())
+            name_words = set(channel.name.lower().split())
+            if query_words.issubset(name_words):
+                return channel
+    
+    return None
+
 # ========== GROQ CLIENTS ==========
 groq = Groq(api_key=GROQ_API_KEY)
 
 # ========== ANTI AFK LOGIC ==========
-EXTRACT_PROMPT = """Extract the secret answer from the message. Return ONLY the exact word/phrase, nothing else – no explanation, no extra words, no punctuation. If the message does NOT contain any request for a specific answer, return just: NONE
+EXTRACT_PROMPT = """Extract the secret answer from the message. Return ONLY the exact word/phrase, nothing else – no explanation, no extra words, no punctuation.
 Examples:
 - "afk check say pineapple" → pineapple
 - "kw = strawberry" → strawberry
@@ -107,6 +158,7 @@ Examples:
 - "tell what is formula of Sodium Chloride" → NaCl
 - "what is fastest animal?" → cheetah
 - "what is 1+1*1/1+1?" → 1
+- "kw = anti + add the string value which is "hello"" → anti hello
 Return ONLY the answer word/phrase, nothing else."""
 
 NUMBERS_PATTERN = re.compile(r'^(\d+\s+)+\d+$')
@@ -267,9 +319,50 @@ async def on_message(message):
     if anti_target_channel and message.channel.id == anti_target_channel:
         author_id = message.author.id
         content = message.content
+        content_lower = content.lower()
+        
+        # ========== INFO REQUESTS (alias, status, bio, username) ==========
+        info_reply = None
+        
+        # Get display name (nickname in server, or username)
+        if message.guild:
+            member = message.guild.get_member(author_id)
+            display_name = member.nick if member and member.nick else message.author.display_name
+        else:
+            display_name = message.author.display_name
+        
+        # Check for "tell my X" patterns
+        if re.search(r'(tell|whats?|what is)\s+my\s+alias', content_lower):
+            info_reply = f"# {display_name}"
+        elif re.search(r'(tell|whats?|what is)\s+my\s+status', content_lower):
+            status = str(message.author.status) if hasattr(message.author, 'status') else "online"
+            info_reply = f"# {status}"
+        elif re.search(r'(tell|read|whats?|what is).*bio', content_lower):
+            bio = getattr(message.author, 'bio', None)
+            if not bio:
+                bio = "No bio set"
+            info_reply = f"# {bio[:100]}"
+        elif re.search(r'(tell|whats?|what is)\s+my\s+username', content_lower):
+            info_reply = f"# {message.author.name}"
+        
+        # Send info reply (check for target channel first)
+        if info_reply:
+            target_channel = extract_target_channel(content, message.guild)
+            if target_channel:
+                await target_channel.send(info_reply)
+                print(f"[Anti] Info reply sent to #{target_channel.name}: {info_reply}")
+            else:
+                await message.channel.send(info_reply)
+                print(f"[Anti] Info reply to {message.author.name}: {info_reply}")
+            # Don't continue to counting for info requests
+            # (remove this line if you want counting to also happen)
+            return
+        
+        # ========== COUNTING DETECTION (original logic) ==========
         if author_id not in anti_user_history:
             anti_user_history[author_id] = deque(maxlen=10)
         anti_user_history[author_id].append((content, message))
+        
         num = parse_count_number(content)
         if num is not None:
             last = anti_user_last_number.get(author_id, 0)
@@ -285,8 +378,14 @@ async def on_message(message):
                             answer = ans
                             break
                     if answer:
-                        await message.channel.send(f"# {answer}")
-                        print(f"Anti AFK replied: {answer}")
+                        # Check if target channel specified
+                        target_channel = extract_target_channel(content, message.guild)
+                        if target_channel:
+                            await target_channel.send(f"# {answer}")
+                            print(f"[Anti] Counting reply sent to #{target_channel.name}: {answer}")
+                        else:
+                            await message.channel.send(f"# {answer}")
+                            print(f"Anti AFK replied: {answer}")
                     anti_user_last_number[author_id] = 0
             else:
                 anti_user_last_number[author_id] = 0
