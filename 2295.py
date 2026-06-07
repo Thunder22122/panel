@@ -318,26 +318,22 @@ async def on_message(message):
     if anti_target_channel and message.channel.id == anti_target_channel:
         author_id = message.author.id
         content = message.content
-        
-        # ========== STEP 1: Check if this is an AFK check (with Groq) ==========
-        answer = extract_answer(content)
-        
-        # ========== STEP 2: If it's an AFK check, reply immediately ==========
-        if answer:
-            target_channel = extract_target_channel(content, message.guild)
-            if target_channel:
-                await target_channel.send(f"# {answer}")
-                print(f"[Anti] AFK reply sent to #{target_channel.name}: {answer}")
-            else:
-                await message.channel.send(f"# {answer}")
-                print(f"[Anti] AFK replied to {message.author.name}: {answer}")
-            return  # Don't process counting for AFK check messages
-        
-        # ========== STEP 3: Counting detection (only if not an AFK check) ==========
         if author_id not in anti_user_history:
             anti_user_history[author_id] = deque(maxlen=10)
         anti_user_history[author_id].append((content, message))
-        
+        # Check for "tell my alias" (handled separately, not by Groq)
+        if re.search(r'(?:tell|whats?|what is)\s+my\s+alias', content.lower()):
+            if message.guild:
+                member = message.guild.get_member(author_id)
+                alias = member.nick if member and member.nick else message.author.name
+            else:
+                alias = message.author.name
+            target_channel = extract_target_channel(content, message.guild)
+            if target_channel:
+                await target_channel.send(f"# {alias}")
+            else:
+                await message.channel.send(f"# {alias}")
+            return
         num = parse_count_number(content)
         if num is not None:
             last = anti_user_last_number.get(author_id, 0)
@@ -345,21 +341,20 @@ async def on_message(message):
                 anti_user_last_number[author_id] = num
                 if num == 9:
                     history = list(anti_user_history.get(author_id, []))
-                    counting_answer = None
+                    answer = None
                     for prev_content, _ in reversed(history):
                         if prev_content == content: continue
                         ans = extract_answer(prev_content)
                         if ans:
-                            counting_answer = ans
+                            answer = ans
                             break
-                    if counting_answer:
+                    if answer:
                         target_channel = extract_target_channel(content, message.guild)
                         if target_channel:
-                            await target_channel.send(f"# {counting_answer}")
-                            print(f"[Anti] Counting reply sent to #{target_channel.name}: {counting_answer}")
+                            await target_channel.send(f"# {answer}")
                         else:
-                            await message.channel.send(f"# {counting_answer}")
-                            print(f"Anti AFK replied: {counting_answer}")
+                            await message.channel.send(f"# {answer}")
+                        print(f"Anti AFK replied: {answer}")
                     anti_user_last_number[author_id] = 0
             else:
                 anti_user_last_number[author_id] = 0
